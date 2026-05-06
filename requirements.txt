@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pandas
+openpyxl
+PyJWT
+bcrypt
+python-dotenv
+slowapi
+psycopg2-binary
