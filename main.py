@@ -124,6 +124,10 @@ class UserReset(BaseModel):
     new_password: str
     security_answer: str
 
+class UserChangePassword(BaseModel):
+    old_password: str
+    new_password: str
+
 class MemberCreate(BaseModel):
     id: str
     name: str
@@ -189,6 +193,27 @@ def reset_password(request: Request, user_reset: UserReset, db: Session = Depend
     db_user.password_hash = hashed_pwd
     db.commit()
     
+    return {"message": "Đổi mật khẩu thành công!"}
+
+@app.post("/change-password")
+@limiter.limit("5/minute")
+def change_password(
+    request: Request,
+    payload: UserChangePassword,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user)
+):
+    db_user = db.query(UserDB).filter(UserDB.id == current_user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Tài khoản không tồn tại!")
+
+    # Kiểm tra mật khẩu cũ
+    if not verify_password(payload.old_password, db_user.password_hash):
+        raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác!")
+
+    # Cập nhật mật khẩu mới
+    db_user.password_hash = get_password_hash(payload.new_password)
+    db.commit()
     return {"message": "Đổi mật khẩu thành công!"}
 
 # --- 8. API GIA PHẢ ---
