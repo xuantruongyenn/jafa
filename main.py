@@ -140,7 +140,17 @@ class MemberCreate(BaseModel):
     parentId: Optional[str] = None
     avatar: Optional[str] = None
 
-# --- 7. API ACCOUNT & XÁC THỰC ---
+# --- 7. HEALTH CHECK ENDPOINT ---
+@app.get("/health")
+def health_check():
+    """Health check endpoint để kiểm tra server có hoạt động không (dùng cho Render & GitHub Actions)"""
+    return {
+        "status": "healthy",
+        "message": "Server is awake and running",
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+
+# --- 8. API ACCOUNT & XÁC THỰC ---
 @app.post("/register")
 @limiter.limit("5/minute")
 def register(request: Request, user: UserRegister, db: Session = Depends(get_db)):
@@ -216,7 +226,7 @@ def change_password(
     db.commit()
     return {"message": "Đổi mật khẩu thành công!"}
 
-# --- 8. API GIA PHẢ ---
+# --- 9. API GIA PHẢ ---
 @app.get("/get-members", response_model=List[MemberCreate])
 def get_members(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user)):
     return db.query(MemberDB).filter(MemberDB.owner_id == current_user_id).all()
@@ -244,7 +254,7 @@ def delete_member(member_id: str, db: Session = Depends(get_db), current_user_id
 @app.get("/export-excel")
 def export_excel(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user)):
     members = db.query(MemberDB).filter(MemberDB.owner_id == current_user_id).all()
-    data = [{"ID": m.id, "Họ và Tên": m.name, "Giới tính": "Nam" if m.gender == "M" else "Nữ", "Vai vế": m.title, "Năm sinh": m.birth, "Năm mất": m.death, "Vợ/Chồng": m.spouse, "Ghi chú": m.desc} for m in members]
+    data = [{"ID": m.id, "Họ và Tên": m.name, "Giới tính": "Nam" if m.gender == "M" else "Nữ", "Vai vế": m.title, "Năm sinh": m.birth, "Năm mất": m.death, "Vợ/Chồng": m.spouse, "Mô tả": m.desc} for m in members]
     df = pd.DataFrame(data)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Gia_Pha')
