@@ -1,0 +1,40 @@
+name: Keep Render Server Awake
+
+on:
+  schedule:
+    # Chạy mỗi 14 phút để tránh server ngủ đông
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Server
+        run: |
+          echo "🔄 Pinging server at $(date)"
+          echo "📍 Target: https://giapha-api-backend.onrender.com/health"
+          
+          response=$(curl -s -w "\n%{http_code}" https://giapha-api-backend.onrender.com/health)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+          
+          echo "✅ Response status: $http_code"
+          echo "📊 Response body:"
+          echo "$body"
+          
+          if [ "$http_code" = "200" ]; then
+            echo "✅ Server is awake and healthy!"
+            exit 0
+          else
+            echo "⚠️ Unexpected status code: $http_code"
+            exit 1
+          fi
+
+      - name: Log success
+        if: success()
+        run: echo "✅ Keep-alive ping successful at $(date)"
+
+      - name: Log failure
+        if: failure()
+        run: echo "❌ Keep-alive ping failed at $(date)"
