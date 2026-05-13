@@ -30,7 +30,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("⛔ Thiếu DATABASE_URL trong môi trường!")
 
-# Fix lỗi SQLAlchemy nếu url bắt đầu bằng postgres:// thay vì postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -47,8 +46,8 @@ class UserDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     password_hash = Column(String)
-    security_question = Column(String, nullable=True)  # Cột mới: Câu hỏi bảo mật
-    security_answer = Column(String, nullable=True)    # Cột mới: Câu trả lời bảo mật
+    security_question = Column(String, nullable=True)
+    security_answer = Column(String, nullable=True)
 
 class MemberDB(Base):
     __tablename__ = "members"
@@ -59,10 +58,11 @@ class MemberDB(Base):
     title = Column(String, nullable=True)
     birth = Column(String, nullable=True)
     death = Column(String, nullable=True)
-    spouse = Column(String, nullable=True)
+    spouse = Column(String, nullable=True)      # Giữ lại để tương thích dữ liệu cũ
     desc = Column(Text, nullable=True)
     parentId = Column(String, nullable=True)
-    avatar = Column(Text, nullable=True)  # Lưu ảnh dạng base64
+    avatar = Column(Text, nullable=True)        # Lưu ảnh dạng base64
+    spouseId = Column(String, nullable=True)    # ID của vợ/chồng trong hệ thống (mới)
 
 Base.metadata.create_all(bind=engine)
 
@@ -135,15 +135,15 @@ class MemberCreate(BaseModel):
     title: Optional[str] = None
     birth: Optional[str] = None
     death: Optional[str] = None
-    spouse: Optional[str] = None
+    spouse: Optional[str] = None      # Giữ lại để tương thích dữ liệu cũ
     desc: Optional[str] = None
     parentId: Optional[str] = None
     avatar: Optional[str] = None
+    spouseId: Optional[str] = None    # ID vợ/chồng (mới)
 
 # --- 7. HEALTH CHECK ENDPOINT ---
 @app.get("/health")
 def health_check():
-    """Health check endpoint để kiểm tra server có hoạt động không (dùng cho Render & GitHub Actions)"""
     return {
         "status": "healthy",
         "message": "Server is awake and running",
@@ -162,7 +162,7 @@ def register(request: Request, user: UserRegister, db: Session = Depends(get_db)
         username=user.username, 
         password_hash=hashed_pwd,
         security_question=user.security_question,
-        security_answer=user.security_answer.lower().strip() # Lưu chữ thường để dễ bề so sánh sau này
+        security_answer=user.security_answer.lower().strip()
     )
     db.add(new_user)
     db.commit()
@@ -194,11 +194,9 @@ def reset_password(request: Request, user_reset: UserReset, db: Session = Depend
     if not db_user: 
         raise HTTPException(status_code=404, detail="Tài khoản không tồn tại!")
     
-    # Kiểm tra câu trả lời (chuẩn hóa về chữ thường và bỏ khoảng trắng 2 đầu)
     if db_user.security_answer != user_reset.security_answer.lower().strip():
         raise HTTPException(status_code=400, detail="Câu trả lời bảo mật không chính xác!")
     
-    # Mã hóa và cập nhật mật khẩu mới
     hashed_pwd = get_password_hash(user_reset.new_password)
     db_user.password_hash = hashed_pwd
     db.commit()
@@ -217,11 +215,9 @@ def change_password(
     if not db_user:
         raise HTTPException(status_code=404, detail="Tài khoản không tồn tại!")
 
-    # Kiểm tra mật khẩu cũ
     if not verify_password(payload.old_password, db_user.password_hash):
         raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác!")
 
-    # Cập nhật mật khẩu mới
     db_user.password_hash = get_password_hash(payload.new_password)
     db.commit()
     return {"message": "Đổi mật khẩu thành công!"}
@@ -254,7 +250,18 @@ def delete_member(member_id: str, db: Session = Depends(get_db), current_user_id
 @app.get("/export-excel")
 def export_excel(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user)):
     members = db.query(MemberDB).filter(MemberDB.owner_id == current_user_id).all()
-    data = [{"ID": m.id, "Họ và Tên": m.name, "Giới tính": "Nam" if m.gender == "M" else "Nữ", "Vai vế": m.title, "Năm sinh": m.birth, "Năm mất": m.death, "Vợ/Chồng": m.spouse, "Mô tả": m.desc} for m in members]
+    # Build a lookup for spouse names via spouseId
+    member_map = {m.id: m.name for m in members}
+    data = [{
+        "ID": m.id,
+        "Họ và Tên": m.name,
+        "Giới tính": "Nam" if m.gender == "M" else "Nữ",
+        "Vai vế": m.title,
+        "Năm sinh": m.birth,
+        "Năm mất": m.death,
+        "Vợ/Chồng": member_map.get(m.spouseId, m.spouse or ""),
+        "Mô tả": m.desc
+    } for m in members]
     df = pd.DataFrame(data)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Gia_Pha')
