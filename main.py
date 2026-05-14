@@ -237,7 +237,7 @@ def add_member(member: MemberCreate, db: Session = Depends(get_db), current_user
         new_member = MemberDB(**member_data, owner_id=current_user_id)
         db.add(new_member)
     db.commit()
-    return {"status": "Đã lưu"}
+    return {"status": "Đã lưu", "id": member.id}
 
 @app.delete("/delete-member/{member_id}")
 def delete_member(member_id: str, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user)):
